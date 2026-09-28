@@ -9,7 +9,7 @@ from reazonspeech_server.runtime import ReazonRuntime
 
 class ModelLoadingTests(unittest.TestCase):
     def test_loads_only_the_selected_int8_model_files_once(self):
-        download = Mock(side_effect=lambda repo_id, filename: f"/cache/{filename}")
+        download = Mock(side_effect=lambda repo_id, filename, **kwargs: f"/cache/{filename}")
         offline_recognizer = Mock()
         from_transducer = Mock(return_value=offline_recognizer)
         sherpa = types.SimpleNamespace(
@@ -22,6 +22,7 @@ class ModelLoadingTests(unittest.TestCase):
 
         self.assertIs(runtime.recognizer, offline_recognizer)
         self.assertEqual(download.call_count, 4)
+        self.assertTrue(all(call.kwargs["local_files_only"] for call in download.call_args_list))
         self.assertCountEqual(
             [call.kwargs["filename"] for call in download.call_args_list],
             [

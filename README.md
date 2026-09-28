@@ -4,14 +4,40 @@
 
 ## 起動
 
-初回はDockerイメージのビルドに加え、コンテナ初回起動時にReazonSpeechモデルをダウンロードします。
+モデルは起動前にホスト側へダウンロードします。コンテナは `/models` を読み取り専用で参照し、起動時にネットワークからモデルを取得しません。ASRファイルが不足するとサーバー起動時に、VADファイルが不足するとWebSocket接続時にエラーになります。
 
 ```bash
+# Hugging Face Hub CLI を用意（プロジェクトと同じバージョン）
+python3 -m pip install huggingface-hub==2.0.0
+mkdir -p models
+
+# ReazonSpeech ASR（既定の MODEL_PRECISION=int8）
+HF_HUB_DISABLE_XET=1 HF_HOME="$PWD/models" hf download reazon-research/reazonspeech-k2-v2 \
+  tokens.txt \
+  encoder-epoch-99-avg-1.int8.onnx \
+  decoder-epoch-99-avg-1.int8.onnx \
+  joiner-epoch-99-avg-1.int8.onnx
+
+# Silero VAD
+curl -fL https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx \
+  -o models/silero_vad.onnx
+
+# 全ファイルが揃ったら起動
 docker compose up -d --build
 docker compose logs -f
 ```
 
-ログでモデルロード開始・完了と `WebSocket server started` を確認してください。ロード済みモデルファイルは名前付きボリュームに保存され、次回以降の起動で再利用されます。ヘルス確認:
+`MODEL_PRECISION` を変更する場合は、設定に合わせたASRファイルを事前に取得してください。`fp32` は encoder / decoder / joiner の `.onnx`、`int8-fp32` は int8 encoder / joiner と fp32 decoder を使います。`tokens.txt` は共通です。たとえば `fp32` の場合:
+
+```bash
+HF_HUB_DISABLE_XET=1 HF_HOME="$PWD/models" hf download reazon-research/reazonspeech-k2-v2 \
+  tokens.txt \
+  encoder-epoch-99-avg-1.onnx \
+  decoder-epoch-99-avg-1.onnx \
+  joiner-epoch-99-avg-1.onnx
+```
+
+ログに `モデルロード完了` と `WebSocket server started` が出てからヘルス確認してください:
 
 ```bash
 curl http://localhost:9090/health

@@ -33,7 +33,9 @@ class ReazonRuntime:
         }
         model_paths = {
             key: hf_hub_download(
-                repo_id="reazon-research/reazonspeech-k2-v2", filename=filename
+                repo_id="reazon-research/reazonspeech-k2-v2",
+                filename=filename,
+                local_files_only=True,
             )
             for key, filename in model_files.items()
         }

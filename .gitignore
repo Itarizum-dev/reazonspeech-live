@@ -2,3 +2,7 @@
 .venv/
 __pycache__/
 *.py[cod]
+/models/
+.env
+.agent_harnesses.json
+.check_for_*_done

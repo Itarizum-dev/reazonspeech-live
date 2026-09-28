@@ -12,10 +12,8 @@ services:
       VAD_MAX_SPEECH_SECONDS: ${VAD_MAX_SPEECH_SECONDS:-30}
       MODEL_PRECISION: ${MODEL_PRECISION:-int8}
       NUM_THREADS: ${NUM_THREADS:-2}
-      HF_HOME: /models/huggingface
+      HF_HOME: /models
+      HF_HUB_OFFLINE: "1"
     volumes:
-      - reazonspeech-model-cache:/models/huggingface
+      - ./models:/models:ro
     restart: unless-stopped
-
-volumes:
-  reazonspeech-model-cache:
