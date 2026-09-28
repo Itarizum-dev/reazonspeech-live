@@ -1,0 +1,21 @@
+services:
+  reazonspeech-server:
+    build: .
+    ports:
+      - "${STT_PORT:-9090}:9090"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 9090
+      VAD_THRESHOLD: ${VAD_THRESHOLD:-0.5}
+      VAD_MIN_SPEECH_MS: ${VAD_MIN_SPEECH_MS:-250}
+      VAD_MIN_SILENCE_MS: ${VAD_MIN_SILENCE_MS:-500}
+      VAD_MAX_SPEECH_SECONDS: ${VAD_MAX_SPEECH_SECONDS:-30}
+      MODEL_PRECISION: ${MODEL_PRECISION:-int8}
+      NUM_THREADS: ${NUM_THREADS:-2}
+      HF_HOME: /models/huggingface
+    volumes:
+      - reazonspeech-model-cache:/models/huggingface
+    restart: unless-stopped
+
+volumes:
+  reazonspeech-model-cache:

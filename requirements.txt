@@ -1,0 +1,4 @@
+aiohttp==3.14.3
+numpy==2.4.4
+sherpa-onnx==1.13.8
+huggingface-hub==2.0.0
