@@ -1,14 +1,28 @@
 # ReazonSpeech WebSocket STT Server
 
-`reazon-research/reazonspeech-k2-v2` を使って、16 kHz / mono / little-endian float32 PCM を発話単位で認識する軽量サーバーです。WhisperLive互換に近い `SERVER_READY` と `completed: true` の結果を返し、facilitatorAI側の既存 `WhisperTranscriber` から接続先を変更して試せる構成を目指しています。
+`reazon-research/reazonspeech-k2-v2` を使って、16 kHz / mono / little-endian float32 PCM を発話単位で認識するWebSocket STTサーバーです。接続時に `SERVER_READY`、発話の認識後に `completed: true` のセグメントを返します。
+
+## 利用モデルと出典
+
+音声の文字起こしには、Reazon Human Interaction Lab の [ReazonSpeech プロジェクト](https://research.reazon.jp/projects/ReazonSpeech/index.html)で公開されている日本語音声認識モデル [reazonspeech-k2-v2](https://huggingface.co/reazon-research/reazonspeech-k2-v2) を使用しています。起動手順で取得する ONNX ファイルがこのモデルの本体です。発話区間の検出には、別のモデルである Silero VAD を使用します。
+
+ReazonSpeech の公式ページでは、音声認識モデルのライセンスを Apache-2.0 と案内しています。モデルの詳細と利用条件は、上記の公式ページとモデルカードを確認してください。このリポジトリは、公開モデルを利用する独立した WebSocket サーバー実装です。
+
+## アーキテクチャ
+
+![ReazonSpeech STTサーバーのアーキテクチャ図](docs/reazonspeech-stt.png)
+
+モデルはホストからコンテナの `/models` へ読み取り専用でマウントします。認識後は同じWebSocket接続で確定セグメントを返します。構成の詳細は、リポジトリをクローンした後に [HTML 版のアーキテクチャ図](docs/architecture.html) をブラウザで開いて確認できます。
 
 ## 起動
 
 モデルは起動前にホスト側へダウンロードします。コンテナは `/models` を読み取り専用で参照し、起動時にネットワークからモデルを取得しません。ASRファイルが不足するとサーバー起動時に、VADファイルが不足するとWebSocket接続時にエラーになります。
 
 ```bash
-# Hugging Face Hub CLI を用意（プロジェクトと同じバージョン）
-python3 -m pip install huggingface-hub==2.0.0
+# Hugging Face Hub CLI を仮想環境へ用意（プロジェクトと同じバージョン）
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install huggingface-hub==2.0.0
 mkdir -p models
 
 # ReazonSpeech ASR（既定の MODEL_PRECISION=int8）
@@ -44,29 +58,31 @@ curl http://localhost:9090/health
 # {"status":"ok","model":"reazonspeech-k2-v2"}
 ```
 
-facilitatorAI側は既存の `WHISPER_LIVE_HOST` をDockerホスト名（同じComposeネットワークなら `reazonspeech-server`）に、`WHISPER_LIVE_PORT` を `9090` に設定します。既存のWhisperLiveと比較する場合は接続先だけを切り替えます。
+同じComposeネットワーク上のクライアントからは `reazonspeech-server:9090`、ホスト上のクライアントからは `localhost:9090` に接続できます。既定ではホストの `127.0.0.1` にだけポートを公開します。`STT_PORT` を変えた場合は、そのポートに読み替えてください。
+
+別のホストから利用する場合は、TLS（`wss://`）、アクセス制御、接続数と送信量の制限を備えたリバースプロキシを前段に置いてください。プロキシから別ホストの本サーバーへ接続する必要がある場合だけ、`STT_BIND_ADDRESS` を到達可能なインターフェースのアドレスに変更し、ファイアウォールでプロキシからの接続に制限してください。このサーバー自体に認証機能はありません。音声データを扱うため、認証なしでインターネットへ直接公開しないでください。
 
 ## WebSocketプロトコル
 
-接続先は `ws://<host>:9090/` または `ws://<host>:9090/ws` です。接続直後に、WhisperTranscriber互換の初期化JSONを送ります。
+接続先は `ws://<host>:<port>/` または `ws://<host>:<port>/ws` です。接続直後に、初期化JSONを送ります。
 
 ```json
-{"uid":"UUID","language":"ja","task":"transcribe","model":"small","use_vad":true}
+{"uid":"client-1","task":"transcribe"}
 ```
 
 初期化後、次の応答が返ります。
 
 ```json
-{"uid":"UUID","message":"SERVER_READY","backend":"reazonspeech-k2-v2"}
+{"uid":"client-1","message":"SERVER_READY","backend":"reazonspeech-k2-v2"}
 ```
 
 以後は16 kHz / mono / float32 / little-endian PCMをbinary frameで送信します。Silero VADが発話終了を検出すると、次の確定セグメントを返します。partialは返しません。
 
 ```json
-{"uid":"UUID","segments":[{"text":"次回までにAPIの実装を行います","completed":true,"start":12.5,"end":17.2}]}
+{"uid":"client-1","segments":[{"text":"音声を認識しました","completed":true,"start":12.5,"end":17.2}]}
 ```
 
-通常会議とPTTは別々のWebSocket接続で利用できます。各接続のVADとサンプルバッファは独立し、ASRモデルは起動時に一度だけロードして共有します。推論は共有ロックで直列化しています。
+複数のクライアントから同時に接続できます。各接続のVADとサンプルバッファは独立し、ASRモデルは起動時に一度だけロードして共有します。推論は共有ロックで直列化しています。現在、初期化JSONでは `task` に `transcribe` のみ指定できます。`uid` は応答にそのまま返されます。
 
 ## 設定
 
@@ -74,6 +90,7 @@ facilitatorAI側は既存の `WHISPER_LIVE_HOST` をDockerホスト名（同じC
 
 | 変数 | 既定値 | 内容 |
 | --- | --- | --- |
+| `STT_BIND_ADDRESS` | `127.0.0.1` | ホスト側の待受アドレス |
 | `STT_PORT` | `9090` | ホストに公開するポート |
 | `MODEL_PRECISION` | `int8` | `int8` / `fp32` / `int8-fp32` |
 | `NUM_THREADS` | `2` | 推論スレッド数 |
@@ -93,4 +110,4 @@ pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-テストはWebSocket/HTTPの公開境界を通してREADY、完了応答、2接続の状態分離、不正PCMのエラー応答を確認します。実モデルの音声認識品質、facilitatorAI画面への表示、30分連続運転はローカルテストでは確認していません。実機でのPoC受け入れとして、実音声、既存アプリ接続、長時間運転を別途確認してください。
+テストはWebSocket/HTTPの公開境界を通してREADY、完了応答、2接続の状態分離、不正PCMのエラー応答を確認します。実モデルの音声認識品質と長時間運転はローカルテストでは確認していません。運用前に実音声での認識と必要な運転時間を確認してください。

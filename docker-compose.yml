@@ -2,7 +2,7 @@ services:
   reazonspeech-server:
     build: .
     ports:
-      - "${STT_PORT:-9090}:9090"
+      - "${STT_BIND_ADDRESS:-127.0.0.1}:${STT_PORT:-9090}:9090"
     environment:
       HOST: 0.0.0.0
       PORT: 9090

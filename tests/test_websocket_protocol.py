@@ -56,20 +56,18 @@ class WebSocketProtocolTests(unittest.IsolatedAsyncioTestCase):
             {"status": "ok", "model": "reazonspeech-k2-v2"},
         )
 
-    async def test_client_receives_ready_then_completed_whisper_compatible_segment(self):
+    async def test_client_receives_ready_then_completed_segment(self):
         socket = await self.client.ws_connect("/ws")
-        await socket.send_json(
-            {"uid": "meeting-1", "language": "ja", "task": "transcribe", "model": "small", "use_vad": True}
-        )
+        await socket.send_json({"uid": "client-1", "task": "transcribe"})
 
         ready = await socket.receive_json()
-        self.assertEqual(ready["uid"], "meeting-1")
+        self.assertEqual(ready["uid"], "client-1")
         self.assertEqual(ready["message"], "SERVER_READY")
         self.assertEqual(ready["backend"], "reazonspeech-k2-v2")
 
         await socket.send_bytes(struct.pack("<4f", 0.1, 0.2, 0.3, 0.4))
         result = await socket.receive_json(timeout=2)
-        self.assertEqual(result["uid"], "meeting-1")
+        self.assertEqual(result["uid"], "client-1")
         self.assertEqual(
             result["segments"],
             [{"text": "recognized-4", "completed": True, "start": 1.25, "end": 1.25}],
@@ -79,8 +77,8 @@ class WebSocketProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def test_each_connection_keeps_its_own_audio_and_uid(self):
         first = await self.client.ws_connect("/ws")
         second = await self.client.ws_connect("/ws")
-        await first.send_json({"uid": "meeting", "task": "transcribe"})
-        await second.send_json({"uid": "ptt", "task": "transcribe"})
+        await first.send_json({"uid": "client-a", "task": "transcribe"})
+        await second.send_json({"uid": "client-b", "task": "transcribe"})
         await first.receive_json()
         await second.receive_json()
 
@@ -92,8 +90,8 @@ class WebSocketProtocolTests(unittest.IsolatedAsyncioTestCase):
         first_result, second_result = await asyncio.gather(
             first.receive_json(timeout=2), second.receive_json(timeout=2)
         )
-        self.assertEqual(first_result["uid"], "meeting")
-        self.assertEqual(second_result["uid"], "ptt")
+        self.assertEqual(first_result["uid"], "client-a")
+        self.assertEqual(second_result["uid"], "client-b")
         self.assertEqual(len(self.runtime.segmenters), 2)
         self.assertCountEqual(self.runtime.seen_lengths, [4, 4])
         await first.close()
@@ -101,12 +99,12 @@ class WebSocketProtocolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_rejects_non_float32_aligned_audio_without_closing_session(self):
         socket = await self.client.ws_connect("/ws")
-        await socket.send_json({"uid": "meeting", "task": "transcribe"})
+        await socket.send_json({"uid": "client-1", "task": "transcribe"})
         await socket.receive_json()
 
         await socket.send_bytes(b"\x00\x01\x02")
         error = await socket.receive_json(timeout=2)
-        self.assertEqual(error["uid"], "meeting")
+        self.assertEqual(error["uid"], "client-1")
         self.assertIn("error", error)
 
         await socket.send_bytes(struct.pack("<4f", 0.1, 0.2, 0.3, 0.4))

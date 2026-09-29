@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "ReazonSpeech STT サーバーの構成",
+    "quality_profile": "showcase",
+    "viewBox": [1280, 740]
+  },
+  "components": [
+    { "id": "client", "type": "external", "label": "音声クライアント", "sublabel": "WebSocket 接続", "pos": [55, 300], "size": [195, 82] },
+    { "id": "api", "type": "backend", "label": "aiohttp サーバー", "sublabel": "/ws · / · /health", "pos": [350, 300], "size": [205, 82] },
+    { "id": "vad", "type": "backend", "label": "Silero VAD", "sublabel": "接続ごとの発話検出", "pos": [665, 300], "size": [205, 82] },
+    { "id": "asr", "type": "backend", "label": "ReazonSpeech ASR", "sublabel": "共有モデル・推論ロック", "pos": [980, 300], "size": [215, 82] },
+    { "id": "vadfile", "type": "database", "label": "Silero VAD モデル", "sublabel": "models/silero_vad.onnx", "pos": [665, 80], "size": [205, 82] },
+    { "id": "asrfiles", "type": "database", "label": "ReazonSpeech モデル", "sublabel": "tokens / encoder / decoder / joiner", "pos": [980, 80], "size": [215, 82] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Docker コンテナ :9090", "wraps": ["api", "vad", "asr"], "pad": 26 }
+  ],
+  "connections": [
+    { "id": "audio", "from": "client", "to": "api", "label": "16 kHz PCM", "variant": "emphasis" },
+    { "id": "frames", "from": "api", "to": "vad", "label": "音声フレーム" },
+    { "id": "speech", "from": "vad", "to": "asr", "label": "発話区間" },
+    { "id": "vadmodel", "from": "vadfile", "to": "vad", "label": "接続時に読込", "labelDy": 24 },
+    { "id": "asrmodel", "from": "asrfiles", "to": "asr", "label": "起動時に読込", "labelDy": 24 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "入力と応答", "items": ["接続後に SERVER_READY を返す", "発話確定後に segments と completed: true を返す"] },
+    { "dot": "emerald", "title": "モデルと接続状態", "items": ["/models はホストから読み取り専用でマウント", "VAD は接続ごと、ASR モデルは全接続で共有"] }
+  ]
+}
