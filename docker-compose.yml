@@ -1,6 +1,19 @@
 services:
+  model-download:
+    build: .
+    command: ["python", "-m", "reazonspeech_server.download_models"]
+    environment:
+      MODEL_PRECISION: ${MODEL_PRECISION:-int8}
+      HF_HOME: /models
+      HF_HUB_DISABLE_XET: "1"
+    volumes:
+      - ./models:/models
+    restart: "no"
   reazonspeech-server:
     build: .
+    depends_on:
+      model-download:
+        condition: service_completed_successfully
     ports:
       - "${STT_BIND_ADDRESS:-127.0.0.1}:${STT_PORT:-9090}:9090"
     environment:

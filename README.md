@@ -12,44 +12,18 @@ ReazonSpeech の公式ページでは、音声認識モデルのライセンス�
 
 ![ReazonSpeech STTサーバーのアーキテクチャ図](docs/reazonspeech-stt.png)
 
-モデルはホストからコンテナの `/models` へ読み取り専用でマウントします。認識後は同じWebSocket接続で確定セグメントを返します。構成の詳細は、リポジトリをクローンした後に [HTML 版のアーキテクチャ図](docs/architecture.html) をブラウザで開いて確認できます。
+ダウンロードしたモデルはホストの `./models` に保存し、サーバーコンテナの `/models` へ読み取り専用でマウントします。認識後は同じWebSocket接続で確定セグメントを返します。構成の詳細は、リポジトリをクローンした後に [HTML 版のアーキテクチャ図](docs/architecture.html) をブラウザで開いて確認できます。
 
 ## 起動
 
-モデルは起動前にホスト側へダウンロードします。コンテナは `/models` を読み取り専用で参照し、起動時にネットワークからモデルを取得しません。ASRファイルが不足するとサーバー起動時に、VADファイルが不足するとWebSocket接続時にエラーになります。
+`docker compose up` 時にダウンロード専用コンテナが必要なASRモデルとSilero VADを `./models` に保存します。既存ファイルは再利用され、ダウンロードが完了してからサーバーが起動します。サーバーコンテナはモデルを読み取り専用で参照し、起動時にネットワークから取得しません。初回起動にはネットワーク接続とモデル分の空き容量が必要です。
 
 ```bash
-# Hugging Face Hub CLI を仮想環境へ用意（プロジェクトと同じバージョン）
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install huggingface-hub==2.0.0
-mkdir -p models
-
-# ReazonSpeech ASR（既定の MODEL_PRECISION=int8）
-HF_HUB_DISABLE_XET=1 HF_HOME="$PWD/models" hf download reazon-research/reazonspeech-k2-v2 \
-  tokens.txt \
-  encoder-epoch-99-avg-1.int8.onnx \
-  decoder-epoch-99-avg-1.int8.onnx \
-  joiner-epoch-99-avg-1.int8.onnx
-
-# Silero VAD
-curl -fL https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx \
-  -o models/silero_vad.onnx
-
-# 全ファイルが揃ったら起動
 docker compose up -d --build
 docker compose logs -f
 ```
 
-`MODEL_PRECISION` を変更する場合は、設定に合わせたASRファイルを事前に取得してください。`fp32` は encoder / decoder / joiner の `.onnx`、`int8-fp32` は int8 encoder / joiner と fp32 decoder を使います。`tokens.txt` は共通です。たとえば `fp32` の場合:
-
-```bash
-HF_HUB_DISABLE_XET=1 HF_HOME="$PWD/models" hf download reazon-research/reazonspeech-k2-v2 \
-  tokens.txt \
-  encoder-epoch-99-avg-1.onnx \
-  decoder-epoch-99-avg-1.onnx \
-  joiner-epoch-99-avg-1.onnx
-```
+`MODEL_PRECISION` で使うONNXファイルを選べます。既定は容量の小さい `int8` です。`fp32` は encoder / decoder / joiner の `.onnx`、`int8-fp32` は int8 encoder / joiner と fp32 decoder を使います。`tokens.txt` は共通です。変更後に `docker compose up -d` を実行すると、必要なファイルだけ追加取得します。これは同じReazonSpeechモデルの精度選択です。
 
 ログに `モデルロード完了` と `WebSocket server started` が出てからヘルス確認してください:
 

@@ -8,6 +8,17 @@ from .vad import SileroSegmenter
 logger = logging.getLogger(__name__)
 
 
+def model_files(precision):
+    encoder_suffix = ".int8.onnx" if precision != "fp32" else ".onnx"
+    decoder_suffix = ".onnx" if precision == "int8-fp32" else encoder_suffix
+    return {
+        "tokens": "tokens.txt",
+        "encoder": f"encoder-epoch-99-avg-1{encoder_suffix}",
+        "decoder": f"decoder-epoch-99-avg-1{decoder_suffix}",
+        "joiner": f"joiner-epoch-99-avg-1{encoder_suffix}",
+    }
+
+
 class ReazonRuntime:
     model_name = "reazonspeech-k2-v2"
 
@@ -23,21 +34,13 @@ class ReazonRuntime:
         from huggingface_hub import hf_hub_download
 
         logger.info("モデルロード開始: %s (%s)", cls.model_name, settings.model_precision)
-        encoder_suffix = ".int8.onnx" if settings.model_precision != "fp32" else ".onnx"
-        decoder_suffix = ".onnx" if settings.model_precision == "int8-fp32" else encoder_suffix
-        model_files = {
-            "tokens": "tokens.txt",
-            "encoder": f"encoder-epoch-99-avg-1{encoder_suffix}",
-            "decoder": f"decoder-epoch-99-avg-1{decoder_suffix}",
-            "joiner": f"joiner-epoch-99-avg-1{encoder_suffix}",
-        }
         model_paths = {
             key: hf_hub_download(
                 repo_id="reazon-research/reazonspeech-k2-v2",
                 filename=filename,
                 local_files_only=True,
             )
-            for key, filename in model_files.items()
+            for key, filename in model_files(settings.model_precision).items()
         }
         recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
             tokens=model_paths["tokens"],
