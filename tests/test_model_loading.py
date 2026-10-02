@@ -35,6 +35,19 @@ class ModelLoadingTests(unittest.TestCase):
         from_transducer.assert_called_once()
         self.assertEqual(from_transducer.call_args.kwargs["num_threads"], 2)
 
+    def test_pads_speech_with_silence_before_recognition(self):
+        recognizer = Mock()
+        recognizer.create_stream.return_value.result.text = " 認識 "
+        runtime = ReazonRuntime(Settings(), recognizer, None)
+
+        self.assertEqual(runtime._transcribe([1.0] * 10), "認識")
+
+        rate, samples = recognizer.create_stream.return_value.accept_waveform.call_args.args
+        self.assertEqual(rate, 16000)
+        self.assertEqual(len(samples), 4800 + 10 + 8000)
+        self.assertEqual(samples[4800:4810].tolist(), [1.0] * 10)
+        self.assertFalse(samples[:4800].any() or samples[4810:].any())
+
 
 if __name__ == "__main__":
     unittest.main()

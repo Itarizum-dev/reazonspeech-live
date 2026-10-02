@@ -6,6 +6,8 @@ import numpy as np
 from .vad import SileroSegmenter
 
 logger = logging.getLogger(__name__)
+HEAD_PADDING = np.zeros(int(16000 * 0.3), dtype=np.float32)
+TAIL_PADDING = np.zeros(int(16000 * 0.5), dtype=np.float32)
 
 
 def model_files(precision):
@@ -64,7 +66,9 @@ class ReazonRuntime:
             return await asyncio.to_thread(self._transcribe, samples)
 
     def _transcribe(self, samples):
+        # The transducer drops or garbles speech that starts or ends without surrounding silence.
+        padded = np.concatenate((HEAD_PADDING, np.asarray(samples, dtype=np.float32), TAIL_PADDING))
         stream = self.recognizer.create_stream()
-        stream.accept_waveform(16000, np.asarray(samples, dtype=np.float32))
+        stream.accept_waveform(16000, padded)
         self.recognizer.decode_stream(stream)
         return stream.result.text.strip()
