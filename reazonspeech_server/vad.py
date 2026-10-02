@@ -28,10 +28,21 @@ class SileroSegmenter:
             window = self.pending[: self.window_size]
             self.pending = self.pending[self.window_size :]
             self.vad.accept_waveform(window)
-            while not self.vad.empty():
-                segment = self.vad.front
-                audio = np.asarray(segment.samples, dtype=np.float32).copy()
-                start = segment.start / 16000
-                completed.append((audio, start, start + len(audio) / 16000))
-                self.vad.pop()
+            self._drain(completed)
+        return completed
+
+    def flush(self):
+        if len(self.pending):
+            self.vad.accept_waveform(np.pad(self.pending, (0, self.window_size - len(self.pending))))
+            self.pending = np.empty(0, dtype=np.float32)
+        self.vad.flush()
+        return self._drain([])
+
+    def _drain(self, completed):
+        while not self.vad.empty():
+            segment = self.vad.front
+            audio = np.asarray(segment.samples, dtype=np.float32).copy()
+            start = segment.start / 16000
+            completed.append((audio, start, start + len(audio) / 16000))
+            self.vad.pop()
         return completed

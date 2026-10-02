@@ -58,6 +58,20 @@ curl http://localhost:9090/health
 
 複数のクライアントから同時に接続できます。各接続のVADとサンプルバッファは独立し、ASRモデルは起動時に一度だけロードして共有します。推論は共有ロックで直列化しています。現在、初期化JSONでは `task` に `transcribe` のみ指定できます。`uid` は応答にそのまま返されます。
 
+## OpenAI互換 文字起こしAPI
+
+`POST /v1/audio/transcriptions` で音声ファイルを一括で文字起こしできます。OpenAI SDKの `base_url` を `http://<host>:<port>/v1` に向けて利用できます。
+
+```bash
+curl http://127.0.0.1:9090/v1/audio/transcriptions \
+  -F file=@sample.wav -F model=reazonspeech-k2-v2 -F response_format=json
+```
+
+- 入力は8/16/32-bit PCMのWAVのみ（最大25 MB）。チャンネル数とサンプルレートは問わず、mono / 16 kHzへ変換します。mp3などは事前に `ffmpeg -i in.mp3 -ar 16000 -ac 1 out.wav` で変換してください。
+- `response_format` は `json`（既定、`{"text": ...}`）/ `text` / `verbose_json`（`segments` と `duration` 付き）に対応します。
+- `model`、`language`、`prompt` などの他のパラメータは受け付けますが無視します。
+- WebSocketと同じSilero VADで発話を区切り、各発話を認識して連結します。
+
 ## 設定
 
 `.env.example` を参考に `.env` を作成します。
@@ -84,4 +98,4 @@ pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 ```
 
-テストはWebSocket/HTTPの公開境界を通してREADY、完了応答、2接続の状態分離、不正PCMのエラー応答を確認します。実モデルの音声認識品質と長時間運転はローカルテストでは確認していません。運用前に実音声での認識と必要な運転時間を確認してください。
+テストはWebSocket/HTTPの公開境界を通してREADY、完了応答、2接続の状態分離、不正PCMのエラー応答に加え、文字起こしAPIの各 `response_format`、WAVのmono/16 kHz変換、不正ファイルの拒否を確認します。実モデルの音声認識品質と長時間運転はローカルテストでは確認していません。運用前に実音声での認識と必要な運転時間を確認してください。
